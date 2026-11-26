@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ru">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="color-scheme" content="light">
+ <meta name="description" content="Локальный пилот: загрузка и проверка кредитного отчёта ПКБ или ГКБ, обязательства и понятная аналитика.">
+ <title>Кредитный обзор · Forte Pilot</title>
+ <link rel="icon" href="/favicon.png?v=2" type="image/png">
+ <link rel="apple-touch-icon" href="/favicon.png?v=2">
+ <link rel="stylesheet" href="/styles.css">
+ <script src="/scenario.js" defer></script>
+ <script src="/app.js" defer></script>
+</head>
+<body>
+ <a class="skip-link" href="#main">Перейти к содержимому</a>
+ <aside class="sidebar" aria-label="Навигация">
+  <a class="brand" href="/" data-page="upload" aria-label="Forte Pilot — загрузка отчёта">
+   <img class="brand-logo" src="/forte-logo.png" alt="Forte">
+   <span class="pilot-label">pilot</span>
+  </a>
+  <div class="sidebar-profile" aria-hidden="true">
+   <span class="profile-avatar">F</span>
+   <div class="profile-meta">
+    <strong>Forte Пилот</strong>
+    <span>ПКБ · ГКБ · Локально</span>
+   </div>
+  </div>
+  <div class="sidebar-body">
+   <p class="nav-label">Меню</p>
+   <nav aria-label="Страницы сайта">
+    <a class="nav-item" id="nav-upload" href="/" data-page="upload" aria-label="Загрузка отчёта" title="Загрузка отчёта"><span data-icon="upload"></span><span class="nav-text">Загрузка отчёта</span></a>
+    <a class="nav-item" id="nav-overview" href="/overview" data-page="overview" aria-label="Кредитный обзор" title="Кредитный обзор"><span data-icon="chart"></span><span class="nav-text">Кредитный обзор</span></a>
+    <a class="nav-item" id="nav-loans" href="/loans" data-page="loans" aria-label="Обязательства" title="Обязательства"><span data-icon="list"></span><span class="nav-text">Обязательства</span><span id="loans-count" class="count" hidden>0</span></a>
+    <a class="nav-item" id="nav-scenario" href="/simulator" data-page="scenario" aria-label="Симулятор" title="Симулятор"><span data-icon="wallet"></span><span class="nav-text">Симулятор</span></a>
+    <a class="nav-item" id="nav-review" href="/review" data-page="review" aria-label="Проверка данных" title="Проверка данных"><span data-icon="scan"></span><span class="nav-text">Проверка данных</span></a>
+    <a class="nav-item" id="nav-method" href="/method" data-page="method" aria-label="Как это считается" title="Как это считается"><span data-icon="book"></span><span class="nav-text">Как это считается</span></a>
+   </nav>
+   <div class="sidebar-note">
+    <span data-icon="file"></span>
+    <p>Сначала — понятная<br>картина обязательств.</p>
+   </div>
+  </div>
+  <div class="sidebar-foot">
+   <span class="status-dot"></span>
+   <div><b>Локальная версия</b><span>Файлы остаются на компьютере</span></div>
+  </div>
+ </aside>
+ <div class="app-shell">
+  <header class="topbar">
+   <div class="breadcrumb"><a href="/" data-page="upload">Forte Pilot</a><span>/</span><b id="breadcrumb-page">Загрузка отчёта</b></div>
+   <div class="local-label"><span data-icon="shield"></span><span>Без внешней передачи</span></div>
+  </header>
+  <main id="main" class="main">
+   <section class="page-heading">
+    <div>
+     <h1 id="page-title" tabindex="-1">Ваша кредитная картина</h1>
+     <p id="page-subtitle">Разберите обязательства и посмотрите, из чего складываются платежи.</p>
+    </div>
+    <button id="reset-button" class="button dark-pill" type="button" hidden><span class="pill-text">Другой отчёт</span><span class="pill-circle" data-icon="upload"></span></button>
+   </section>
+   <div id="error-message" class="notice error" role="alert" hidden></div>
+   <div id="draft-notice" class="notice draft-notice" role="status" hidden><p>Есть несохранённые правки. В расчётах пока используются последние сохранённые значения.</p><a href="/review" data-page="review" class="text-button">Вернуться к правкам</a></div>
+   <section id="route-empty" class="panel route-empty" hidden aria-labelledby="route-empty-title">
+    <span data-icon="file" class="route-empty-icon"></span>
+    <h2 id="route-empty-title">Для этой страницы нужен отчёт</h2>
+    <p id="route-empty-description"></p>
+    <a href="/" data-page="upload" class="button primary">Загрузить отчёт<span data-icon="arrow-right"></span></a>
+    <p class="panel-footnote">Разбор хранится в памяти открытой страницы. После перезагрузки, закрытия или открытия новой вкладки загрузите PDF снова.</p>
+   </section>
+   <div id="current-report-note" class="notice" hidden><p>В этой вкладке уже открыт разбор. Новый файл заменит его после успешной обработки.</p><a href="/overview" data-page="overview" class="text-button">К текущему обзору</a></div>
+
+   <section id="empty-state" class="empty-layout">
+    <div class="upload-panel">
+     <div class="upload-top"><span class="document-symbol" data-icon="file"></span><span class="badge neutral">Первый шаг</span></div>
+     <h2>Загрузите кредитный отчёт</h2>
+     <p class="upload-description">Соберём сведения о договорах в один обзор.<br>Вы сможете проверить каждую сумму.</p>
+     <div id="drop-zone" class="drop-zone">
+      <span class="drop-icon" data-icon="upload"></span>
+      <strong>Перетащите PDF сюда</strong>
+      <span>или выберите файл на компьютере</span>
+      <label class="button primary file-label" for="file-input">Выбрать отчёт<span data-icon="arrow-right"></span></label>
+      <input id="file-input" class="visually-hidden" type="file" accept="application/pdf,.pdf" aria-label="Загрузить кредитный отчёт PDF">
+      <small>ПКБ: подробный текстовый PDF · ГКБ: краткая табличная форма · до 20 МБ</small>
+     </div>
+     <p class="privacy-line"><span data-icon="lock"></span>Обработка на этом компьютере. Сервер не сохраняет загруженный файл.</p>
+     <div class="demo-line">
+      <span>Хотите сначала посмотреть результат?</span>
+      <button id="demo-button" type="button" class="text-button">Открыть пример<span data-icon="arrow-up-right"></span></button>
+     </div>
+    </div>
+    <aside class="intro-panel">
+     <div class="intro-art" aria-hidden="true">
+      <svg viewBox="0 0 120 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+       <rect x="18" y="42" width="12" height="22" rx="3" fill="#f5b841"/>
+       <rect x="38" y="32" width="12" height="32" rx="3" fill="#f5b841"/>
+       <rect x="58" y="24" width="12" height="40" rx="3" fill="#f5b841"/>
+       <rect x="78" y="16" width="12" height="48" rx="3" fill="#e03358"/>
+       <path d="M16 36 L44 26 L64 20 L92 8" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="92" cy="8" r="3.5" fill="#ffffff"/>
+      </svg>
+     </div>
+     <h2>Из отчёта —<br>в понятные цифры</h2>
+     <div class="intro-list">
+      <div><span class="intro-number">1</span><div><h3>Обязательства</h3><p>Распознанные договоры, остатки и платежи. В краткой форме ГКБ нет деталей закрытых договоров.</p></div></div>
+      <div><span class="intro-number">2</span><div><h3>Проверка сведений</h3><p>Пропуски и доступные ссылки на поля исходного отчёта.</p></div></div>
+      <div><span class="intro-number">3</span><div><h3>Нагрузка на бюджет</h3><p>Доля известных платежей в доходе и сценарий закрытия.</p></div></div>
+     </div>
+     <div class="scope-note"><span data-icon="info"></span><p>Разбор носит справочный характер. Решение о выдаче кредита принимает банк.</p></div>
+    </aside>
+   </section>
+
+   <section id="loading-state" class="loading-panel" aria-live="polite" hidden>
+    <div class="loading-line"></div>
+    <span class="document-symbol" data-icon="file"></span>
+    <h2>Читаем сведения из отчёта</h2>
+    <p>Извлекаем договоры и проверяем доступные поля.<br>Обычно это занимает несколько секунд.</p>
+    <div class="skeleton-grid"><div></div><div></div><div></div></div>
+   </section>
+
+   <section id="workspace" hidden>
+    <div id="demo-notice" class="notice demo-notice" hidden>
+     <span data-icon="flask"></span>
+     <div><b>Демонстрационный отчёт</b><span>Вымышленные организации и суммы. Один платёж специально пропущен — его можно добавить при проверке.</span></div>
+     <a href="/demo.pdf" class="text-button" download>Скачать пример<span data-icon="download"></span></a>
+    </div>
+    <div class="report-strip">
+     <div class="file-chip"><span data-icon="file"></span><div><strong id="report-filename"></strong><span id="report-meta"></span></div></div>
+     <div class="report-actions">
+      <button class="text-button" id="source-button" type="button">Открыть PDF<span data-icon="arrow-up-right"></span></button>
+      <button class="button dark-action compact" id="export-button" type="button"><span>Скачать разбор</span><span class="action-dot" data-icon="download"></span></button>
+     </div>
+    </div>
+    <div id="review-banner" class="review-banner">
+     <span data-icon="scan"></span>
+     <div><b id="review-title">Проверьте распознанные сведения</b><span id="review-description">Расчёты предварительные, пока вы не сверили их с отчётом.</span></div>
+     <a href="/review" data-page="review" class="button compact secondary" id="review-button">Проверить данные<span data-icon="arrow-right"></span></a>
+    </div>
+    <div class="workspace-toolbar">
+     <span class="workspace-scope">Сведения текущего разбора</span>
+     <label class="currency-control" id="currency-wrap" hidden>Валюта<select id="currency-select" aria-label="Валюта аналитики"></select></label>
+    </div>
+
+    <section id="panel-overview" class="report-page" aria-label="Кредитный обзор">
+     <div class="metrics" id="metrics"></div>
+     <div class="analysis-grid">
+      <section class="panel income-panel">
+       <div class="panel-heading"><div><h2>Платежи и ваш доход</h2><p>Доля известных платежей в бюджете</p></div><span data-icon="wallet"></span></div>
+       <div id="income-result" aria-live="polite"></div>
+       <label class="income-label" for="income-input">Ежемесячный доход в тенге</label>
+       <div class="income-input-wrap"><input type="text" id="income-input" inputmode="decimal" placeholder="Укажите доход, например 450 000" autocomplete="off"><span>₸</span></div>
+       <div class="panel-footer-action">
+        <a href="/simulator" data-page="scenario" class="text-button scenario-open" id="open-scenario-button"><span>Смоделировать закрытие</span><span class="circle-arrow" data-icon="arrow-right"></span></a>
+       </div>
+       <p class="panel-footnote">Доход указываете вы. Это арифметическая доля известных платежей, а не банковский расчёт КДН.</p>
+      </section>
+
+      <section class="panel debt-panel">
+       <div class="panel-heading"><div><h2>Из чего складывается долг</h2><p>Задолженность по учтённым договорам</p></div><span data-icon="chart"></span></div>
+       <div id="debt-chart"></div>
+       <p id="debt-footnote" class="panel-footnote"></p>
+      </section>
+
+      <aside class="panel promo-card">
+       <div class="promo-chart-art" aria-hidden="true">
+        <svg viewBox="0 0 120 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+         <rect x="20" y="38" width="12" height="22" rx="3" fill="#f5b841"/>
+         <rect x="40" y="28" width="12" height="32" rx="3" fill="#f5b841"/>
+         <rect x="60" y="20" width="12" height="40" rx="3" fill="#f5b841"/>
+         <rect x="80" y="14" width="12" height="46" rx="3" fill="#ff5a7e"/>
+         <path d="M16 34 L46 22 L66 16 L94 6" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+         <circle cx="94" cy="6" r="3" fill="#ffffff"/>
+         <line x1="12" y1="61" x2="108" y2="61" stroke="rgba(255,255,255,0.22)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+       </div>
+       <h2>Симулятор нагрузки</h2>
+        <p>Отметьте договоры и сравните известные платежи в сценарии их полного закрытия.</p>
+        <a href="/simulator" data-page="scenario" class="button promo-cta" id="promo-scenario-button">Открыть симулятор</a>
+      </aside>
+     </div>
+
+     <section class="panel reading-panel">
+       <div class="reading-title"><span data-icon="list"></span><h2>Сведения текущего разбора</h2></div>
+      <div id="report-reading" class="reading-content"></div>
+     </section>
+
+     <section class="obligations-preview">
+      <div class="section-title"><h2>Действующие обязательства</h2><a href="/loans" data-page="loans" class="text-button" id="all-loans-button">Все договоры<span data-icon="arrow-right"></span></a></div>
+      <div id="preview-table"></div>
+     </section>
+    </section>
+
+    <section id="panel-loans" class="report-page" aria-label="Обязательства" hidden>
+     <div class="section-title loans-heading">
+       <div><h2>Договоры текущего разбора</h2><p>Закрытые договоры и поручительства не включаются в суммы действующих обязательств заёмщика. Ручные изменения отмечены в таблице.</p></div>
+      <label class="filter-label">Показать<select id="status-filter"><option value="all">Все договоры</option><option value="active">Действующие</option><option value="closed">Закрытые</option><option value="review">Требуют проверки</option></select></label>
+     </div>
+     <div id="loans-table"></div>
+    </section>
+
+    <section id="panel-scenario" class="report-page" aria-label="Сценарий закрытия" hidden>
+     <div class="section-title scenario-heading">
+      <div><h2>Если закрыть выбранные кредиты</h2><p>Отметьте обязательства для полного закрытия. Сравнение обновится сразу.</p></div>
+      <button class="text-button" id="scenario-reset" type="button">Снять весь выбор</button>
+     </div>
+     <div class="scenario-layout">
+      <section class="panel scenario-selector" aria-labelledby="scenario-list-title">
+       <div class="panel-heading"><div><h3 id="scenario-list-title">Выберите обязательства</h3><p id="scenario-selection-count"></p></div><button type="button" id="scenario-select-all" class="text-button">Выбрать все</button></div>
+       <fieldset class="scenario-fieldset"><legend class="visually-hidden">Обязательства для полного закрытия</legend><div id="scenario-loans"></div></fieldset>
+       <p class="panel-footnote">Здесь действующие договоры заёмщика и созаёмщика. Валюты рассчитываются отдельно.</p>
+      </section>
+      <section class="panel scenario-comparison" aria-labelledby="scenario-comparison-title">
+       <div class="panel-heading"><div><h3 id="scenario-comparison-title">Сравнение платежей</h3><p id="scenario-currency-label"></p></div><span data-icon="chart"></span></div>
+       <label class="income-label" for="scenario-income-input">Ваш ежемесячный доход в тенге</label>
+       <div class="income-input-wrap"><input id="scenario-income-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Укажите доход"><span>₸</span></div>
+       <div id="scenario-results" aria-live="polite" aria-atomic="true"></div>
+       <p class="panel-footnote">Это сценарий полного закрытия обязательств. Для карты предполагается закрытие договора, включая лимит. Сумма остатков из отчёта служит ориентиром: точную сумму досрочного погашения на выбранную дату нужно уточнить у кредитора. Доля платежей в доходе — арифметический расчёт.</p>
+      </section>
+     </div>
+     <div class="scenario-live" id="scenario-live" aria-hidden="true"></div>
+    </section>
+
+    <section id="panel-review" class="report-page" aria-label="Проверка данных" hidden>
+     <div class="section-title review-heading">
+       <div><h2>Сверьте сведения с PDF</h2><p>Пустое поле означает, что значение не распознано или не введено. Оно может быть в PDF. Исправления действуют только в этом разборе.</p></div>
+      <button type="button" class="button secondary compact" id="add-loan-button"><span data-icon="plus"></span>Добавить договор</button>
+     </div>
+     <div id="report-warnings"></div>
+     <form id="review-form" novalidate>
+      <div id="review-records"></div>
+      <div id="review-error" class="notice error" role="alert" hidden></div>
+      <div class="review-bottom">
+       <label class="confirmation"><input type="checkbox" id="confirm-checkbox"><span>Я сверил(а) перечень договоров и суммы с исходным отчётом</span></label>
+       <button type="submit" id="save-button" class="button primary">Сохранить и пересчитать<span data-icon="arrow-right"></span></button>
+      </div>
+     </form>
+    </section>
+   </section>
+
+   <section id="method-panel" class="method-panel" hidden>
+     <a href="/overview" data-page="overview" class="text-button" id="back-button"><span data-icon="arrow-left"></span>К обзору</a>
+     <h2>От PDF до арифметического расчёта</h2>
+    <p>В первой версии сведения извлекаются по подписям полей отчёта. После этого программа выполняет арифметические расчёты. Внешняя AI-модель не подключена.</p>
+    <dl>
+     <dt>Задолженность</dt><dd>Сумма распознанных текущих остатков действующих договоров, где вы заёмщик или созаёмщик. Кредитные лимиты и первоначальная сумма займа не подменяют остаток. Просроченная сумма показывается отдельно и повторно к остатку не прибавляется.</dd>
+      <dt>Платежи в месяц</dt><dd>Сумма распознанных периодических или минимальных платежей и ваших исправлений. В ПКБ при отсутствии явной месячной подписи поля и в ГКБ при неуказанной периодичности месячная частота считается предположением до вашего подтверждения. Неизвестное значение остаётся пропуском. Платежи из разных валют не складываются.</dd>
+      <dt>Доля известных платежей в доходе</dt><dd>Учтённые месячные платежи в тенге ÷ указанный вами месячный доход × 100%. При пропусках или предположениях появляется пометка о неполных данных. Доход не подтверждается бюро. Расчёт не оценивает достаточность дохода для жизни, не учитывает будущий кредит и не заменяет банковский КДН.</dd>
+     <dt>Просрочка</dt><dd>Текущие суммы и дни из блока договора. Исторический максимум просрочек не считается текущей просрочкой. Отсутствие записи не доказывает отсутствие просрочки.</dd>
+      <dt>Проверка и конфиденциальность</dt><dd>Файл обрабатывается локальным сервером на этом компьютере. Загруженные PDF и извлечённые данные не сохраняются сервером и не отправляются внешним сервисам. При переходах по меню разбор остаётся в памяти. Перезагрузка, закрытие или новая вкладка требуют повторной загрузки PDF. Скачанный JSON включает сведения разбора и введённый доход и хранится там, куда вы его сохранили.</dd>
+     <dt>Ограничения версии</dt><dd>Поддерживаются текстовые PDF ПКБ с подробными блоками договоров и краткая форма ГКБ с таблицей обязательств. Предположения о месячной периодичности в ПКБ и ГКБ помечаются и требуют подтверждения. В ГКБ явная разовая или двухнедельная периодичность не подменяется месячной. Другие макеты требуют отдельной проверки. Подлинность PDF не проверяется. Выводы основаны на датах и сведениях самого файла.</dd>
+    </dl>
+   </section>
+   <footer class="page-footer"><span>Forte Pilot · Разбор кредитного отчёта</span><span>Справочная аналитика · без прогноза одобрения</span></footer>
+  </main>
+ </div>
+ <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p class="notice">Для локального разбора PDF и расчётов включите JavaScript в браузере.</p></noscript>
+</body>
+</html>

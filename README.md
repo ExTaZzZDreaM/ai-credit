@@ -40,8 +40,11 @@ python -m venv .venv
 Автоматические проверки:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
+
+`pypdf` нужен только тестам (создание зашифрованных и пустых PDF), поэтому он вынесен в `requirements-dev.txt`.
 
 ## Что поддерживается и что ограничено
 

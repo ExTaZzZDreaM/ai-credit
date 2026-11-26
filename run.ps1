@@ -12,7 +12,7 @@ $selectedPython = $null
 foreach ($candidate in $candidatePaths) {
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
     try {
-        & $candidate -c 'import pypdf, pypdfium2, reportlab, pdfplumber' 2>$null
+        & $candidate -c 'import pypdfium2, reportlab, pdfplumber' 2>$null
         if ($LASTEXITCODE -eq 0) { $selectedPython = $candidate; break }
     } catch { continue }
 }

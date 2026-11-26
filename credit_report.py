@@ -12,7 +12,6 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from bisect import bisect_right
 
-from pypdf import PdfReader
 import pypdfium2 as pdfium
 from pdf_input import pdf_payload
 
@@ -58,6 +57,48 @@ def iso_date(raw: str | None) -> str | None:
         return datetime.strptime(raw, "%d.%m.%Y").date().isoformat()
     except ValueError:
         return None
+
+
+def money_text(value) -> str:
+    text = f"{amount(value):,.2f}".replace(",", " ")
+    return text[:-3] if text.endswith(".00") else text.replace(".", ",")
+
+
+def loan_issues(loan: dict) -> list[str]:
+    """Issues derived from a loan's current fields.
+
+    Shared by the parsers and by recalculation, so a saved edit keeps every
+    warning that still applies and drops only the ones the edit resolved.
+    GKB records are recognised by their `next_payment` field.
+    """
+    issues = []
+    gkb = "next_payment" in loan
+    active = loan.get("status") == "active"
+    currency = loan.get("currency")
+    if loan.get("status") == "unknown":
+        issues.append("Не определён статус договора.")
+    if loan.get("role") == "unknown":
+        issues.append("Уточните свою роль в договоре.")
+    if currency == "UNK":
+        issues.append("Не определена валюта договора.")
+    limit_currency = loan.get("credit_limit_currency")
+    if limit_currency and currency != limit_currency:
+        issues.append("Валюта кредитного лимита отличается от валюты задолженности. Проверьте источник.")
+    if loan.get("balance") is None:
+        issues.append("Не найдена текущая задолженность.")
+    if loan.get("payment") is None and active:
+        if gkb and loan.get("next_payment") is not None:
+            issues.append(f"Предстоящий платёж: {money_text(loan['next_payment'])} {currency}. Месячный платёж не определён по периодичности. Уточните сумму в поле регулярного платежа.")
+        elif not gkb:
+            issues.append("Не найден регулярный платёж.")
+    if gkb and loan.get("next_payment") is None:
+        issues.append("Не найдена сумма предстоящего платежа.")
+    if loan.get("payment_basis") == "assumed_monthly" and loan.get("payment") is not None and active:
+        issues.append("Периодичность в ГКБ не указана. Предстоящий платёж включён в месячный расчёт как предположение; подтвердите его ниже." if gkb else "Месячная периодичность не подтверждена подписью поля ПКБ. Платёж включён как предполагаемый месячный; проверьте периодичность.")
+    as_of = loan.get("as_of")
+    if as_of and as_of > datetime.now(TZ).date().isoformat():
+        issues.append("Дата сведений находится в будущем.")
+    return issues
 
 
 MONEY = r"([0-9]+(?:[.,][0-9]{1,2})?)(kzt|тенге|₸|usd|eur|rub|руб\.?|долл\.?)"
@@ -146,12 +187,38 @@ def contract_blocks(texts):
         yield page_index, per_page[page_index] - 1, section, raw[start:end], breaks
 
 
+def bureau_signals(raw: str) -> tuple[bool, bool]:
+    """Bureau names in raw text. Abbreviations must be whole words: compacting
+    text glues words, e.g. «долг к банку» contains «гкб»."""
+    text = compact(raw)
+    pkb = "1cb" in text or "первоекредитноебюро" in text or bool(re.search(r"(?<![а-яё])пкб(?![а-яё])", raw, re.I))
+    gkb = "государственноекредитноебюро" in text or bool(re.search(r"(?<![а-яё])гкб(?![а-яё])", raw, re.I))
+    return pkb, gkb
+
+
+def detect_bureau(texts: list[str]) -> str:
+    # The issuing bureau is named in the header; the body or legal notes can
+    # mention the other bureau.
+    pkb, gkb = bureau_signals(texts[0][:4000])
+    if pkb != gkb:
+        return "ПКБ" if pkb else "ГКБ"
+    whole = compact("\n".join(texts))
+    gkb_layout = "краткаяформа" in whole or "действующихнамоментполученияотчета" in whole
+    pkb_layout = bool(re.search(r"(?im)^[ \t]*контракт\s*(?:№|#)?\s*\d{1,4}(?!\d)", "\n".join(texts)))
+    if gkb_layout != pkb_layout:
+        return "ГКБ" if gkb_layout else "ПКБ"
+    pkb, gkb = bureau_signals("\n".join(texts))
+    if pkb != gkb:
+        return "ПКБ" if pkb else "ГКБ"
+    return "Бюро не определено"
+
+
 def parse_pages(texts: list[str], filename="report.pdf", pdf_data=None) -> dict:
     pages = [compact(t) for t in texts]
     whole = "\n".join(pages)
     if "кредит" not in whole or not any(x in whole for x in ["1cb", "кредитноебюро", "пкб", "гкб", "кредитныйотчет"]):
         raise ReportError("Не удалось определить кредитный отчёт. Загрузите текстовый PDF ПКБ или ГКБ.")
-    bureau = "ГКБ" if "государственноекредитноебюро" in whole else "ПКБ" if any(x in whole for x in ["1cb", "первоекредитноебюро", "пкб"]) else "ГКБ" if "гкб" in whole else "Бюро не определено"
+    bureau = detect_bureau(texts)
     if bureau == "ГКБ":
         if pdf_data is None:
             raise ReportError("Для разбора таблицы ГКБ нужен исходный PDF с расположением колонок.")
@@ -159,19 +226,28 @@ def parse_pages(texts: list[str], filename="report.pdf", pdf_data=None) -> dict:
         return parse_gkb_pdf(pdf_data, filename)
     first = pages[0][:7000]
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
-    found = re.search(r"(?<!\d)(\d{1,2})\s+(" + "|".join(months) + r")\s+(20\d{2})", texts[0].lower())
-    report_date = None
-    if found:
+    month_date = r"(?<!\d)(\d{1,2})\s+(" + "|".join(months) + r")\s+(20\d{2})"
+
+    def from_month_name(found):
         try:
-            report_date = date(int(found[3]), months.index(found[2]) + 1, int(found[1])).isoformat()
+            return date(int(found[3]), months.index(found[2]) + 1, int(found[1])).isoformat()
         except ValueError:
-            pass
+            return None
+
+    # Explicitly labelled dates first: an unlabelled date on the first page can
+    # belong to a contract or a person and would shift the inquiry windows.
+    found = re.search(r"(?:датаформирования|датаотчета|датавыдачи)[:：]?(\d{2}\.\d{2}\.\d{4})", first)
+    report_date = iso_date(found[1]) if found else None
     if not report_date:
-        found = re.search(r"(?:датаформирования|датаотчета|датавыдачи)[:：]?(\d{2}\.\d{2}\.\d{4})", first)
-        report_date = iso_date(found[1]) if found else None
+        found = re.search(r"дата\s+(?:формирования|отч[её]та|выдачи)(?:\s+отч[её]та)?\s*[:：]?\s*" + month_date, texts[0].lower())
+        report_date = from_month_name(found) if found else None
     if not report_date:
         found = re.search(r"\bID\s*\d{6,12}\s*[-–]?\s*(\d{2}\.\d{2}\.\d{4})(?:\s+\d{2}:\d{2}:\d{2})?", texts[0])
         report_date = iso_date(found[1]) if found else None
+    if not report_date:
+        # PKB headers can carry the issue date as unlabelled text.
+        found = re.search(month_date, texts[0].lower())
+        report_date = from_month_name(found) if found else None
 
     loans, warnings = [], []
     balance_labels = ["Использованная сумма (подлежащая погашению)", "Непогашенная сумма по кредиту", "Остаток основного долга", "Остаток задолженности", "Сумма задолженности"]
@@ -245,25 +321,11 @@ def parse_pages(texts: list[str], filename="report.pdf", pdf_data=None) -> dict:
         if oc and bc and oc != bc:
             overdue = None
             issues.append("Проверьте валюту просроченной суммы.")
-        if extra_fields['credit_limit_currency'] and currency != extra_fields['credit_limit_currency']:
-            issues.append("Валюта кредитного лимита отличается от валюты задолженности. Проверьте источник.")
-        if status == "unknown":
-            issues.append("Не определён статус договора.")
-        if role == "unknown":
-            issues.append("Уточните свою роль в договоре.")
-        if balance is None:
-            issues.append("Не найдена текущая задолженность.")
-        if payment is None and status == "active":
-            issues.append("Не найден регулярный платёж.")
         payment_basis = None if payment is None else "reported_monthly" if pl and "ежемесячн" in pl.lower() else "assumed_monthly"
-        if payment_basis == "assumed_monthly" and status == "active":
-            issues.append("Месячная периодичность не подтверждена подписью поля ПКБ. Платёж включён как предполагаемый месячный; проверьте периодичность.")
         days_match = re.search(r"Количество\s+дней\s+просрочки\s*[:：]?\s*(\d{1,5})(?=\s|$)", raw_block, re.I)
         days = int(days_match[1]) if days_match else None
         d = re.search(r"информацияпосостояниюна[:：]?(\d{1,2}\.\d{2}\.\d{4})", block)
         as_of = iso_date(d[1]) if d else None
-        if as_of and as_of > datetime.now(TZ).date().isoformat():
-            issues.append("Дата сведений находится в будущем.")
         sources = {}
         for field, label, value, pos in [("balance", bl, balance, bp), ("payment", pl, payment, pp), ("overdue_amount", ol, overdue, op)]:
             if label and value is not None:
@@ -271,6 +333,7 @@ def parse_pages(texts: list[str], filename="report.pdf", pdf_data=None) -> dict:
                 sources[field] = {"page": source_page, "label": label, "value": value}
         sources.update(extra_sources)
         loans.append({"id": f"loan-{page_index + 1}-{index + 1}", "title": kind, "creditor": creditor[:120], "status": status, "role": role, "currency": currency, "balance": balance, "payment": payment, "payment_basis": payment_basis, "overdue_amount": overdue, "overdue_days": days, "as_of": as_of, "page": page_index + 1, **extra_fields, "sources": sources, "issues": issues, "edited": False})
+        issues.extend(loan_issues(loans[-1]))
     if not loans:
         no_active = any(phrase in whole for phrase in ["субъектнеимеетдействующихдоговоров", "действующиедоговорыотсутствуют", "действующихдоговоров:0", "количестводействующихдоговоров:0"])
         if not no_active:
@@ -344,8 +407,6 @@ def validate_loans(loans) -> list[dict]:
             if basis not in {None, 'reported_monthly', 'assumed_monthly', 'user_confirmed_monthly', 'user_entered_monthly'}:
                 raise ValueError('Проверьте основание месячного платежа.')
             clean[-1]['payment_basis'] = basis if values['payment'] is not None else None
-            if clean[-1]['payment_basis'] == 'assumed_monthly':
-                clean[-1]['issues'].append('Месячная периодичность платежа предположена. Подтвердите её по источнику.')
         if 'credit_limit' in item:
             clean[-1]['credit_limit'] = number(amount(item.get('credit_limit')))
             limit_currency = item.get('credit_limit_currency') or None
@@ -378,6 +439,7 @@ def validate_loans(loans) -> list[dict]:
             if scope not in {None, 'since_contract_start', 'reported_maximum'}:
                 raise ValueError('Некорректный период исторической просрочки.')
             clean[-1].update(max_overdue_days_history=value, history_scope=scope)
+        clean[-1]['issues'] = loan_issues(clean[-1])
     return clean
 
 

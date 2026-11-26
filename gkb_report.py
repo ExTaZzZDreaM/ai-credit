@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pdfplumber
 
-from credit_report import ReportError, TZ, amount, compact, iso_date, number, summarize
+from credit_report import ReportError, TZ, amount, compact, iso_date, loan_issues, number, summarize
 
 
 def cell(value):
@@ -82,29 +82,14 @@ def parse_gkb_rows(texts, rows, totals, filename):
         payment_basis = 'assumed_monthly' if assumed else 'reported_monthly' if monthly else None
         balance, overdue = cell_amount(balance), cell_amount(overdue)
         days = int(days) if re.fullmatch(r"\d{1,5}", days) else None
-        issues = []
-        if assumed:
-            issues.append('Периодичность в ГКБ не указана. Предстоящий платёж включён в месячный расчёт как предположение; подтвердите его ниже.')
-        elif not monthly:
-            detail = f"Предстоящий платёж: {upcoming} {currency}. " if next_payment is not None else ""
-            issues.append(detail + "Месячный платёж не определён по периодичности. Уточните сумму в поле регулярного платежа.")
-        if balance is None:
-            issues.append("Не найдена текущая задолженность.")
-        if next_payment is None:
-            issues.append("Не найдена сумма предстоящего платежа.")
-        if role == "unknown":
-            issues.append("Уточните свою роль в договоре.")
-        if currency == "UNK":
-            issues.append("Не определена валюта договора.")
         as_of = iso_date(raw_date)
-        if as_of and as_of > datetime.now(TZ).date().isoformat():
-            issues.append("Дата сведений находится в будущем.")
         sources = {}
         payment_label = 'Сумма предстоящего платежа; месячная периодичность предположена' if assumed else 'Сумма предстоящего платежа; ежемесячная периодичность'
         for field, label, value in [("balance", "Общая задолженность", balance), ("payment", payment_label, payment), ("next_payment", "Сумма предстоящего платежа", next_payment), ("overdue_amount", "Просроченная задолженность", overdue)]:
             if value is not None:
                 sources[field] = {"page": page_number, "label": label, "value": value}
-        loans.append({"id": f"gkb-{page_number}-{len(loans) + 1}", "title": "Обязательство", "creditor": creditor[:120], "status": "active", "role": role, "currency": currency, "balance": balance, "payment": payment, "payment_basis": payment_basis, "next_payment": next_payment, "payment_frequency": frequency or None, "overdue_amount": overdue, "overdue_days": days, "as_of": as_of, "page": page_number, "sources": sources, "issues": issues, "edited": False})
+        loans.append({"id": f"gkb-{page_number}-{len(loans) + 1}", "title": "Обязательство", "creditor": creditor[:120], "status": "active", "role": role, "currency": currency, "balance": balance, "payment": payment, "payment_basis": payment_basis, "next_payment": next_payment, "payment_frequency": frequency or None, "overdue_amount": overdue, "overdue_days": days, "as_of": as_of, "page": page_number, "sources": sources, "issues": [], "edited": False})
+        loans[-1]["issues"] = loan_issues(loans[-1])
     if not loans and declared != 0:
         raise ReportError("Таблица обязательств ГКБ не распознана. Поддерживается текстовая краткая форма с 13 колонками.")
     if declared is not None and declared != len(loans):

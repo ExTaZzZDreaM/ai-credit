@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import mimetypes
 import secrets
 import subprocess
@@ -159,7 +158,6 @@ def main():
     parser.add_argument("--parse-worker", action="store_true")
     args = parser.parse_args()
     if args.parse_worker:
-        logging.getLogger("pypdf").setLevel(logging.CRITICAL)
         try:
             result = extract_report(sys.stdin.buffer.read(MAX_BYTES + 1))
         except ReportError as exc:
